@@ -4,96 +4,53 @@
 
 ## Description:
 
-Ruby library to provide server side functionality for elFinder.  elFinder is an
-open-source file manager for web, written in JavaScript using jQuery UI.
+Based on a Ruby library to provide server side functionality for elFinder, this version provides a Rails backend for
+elFinder that uses an FTP server as its file storage, rather than the local filesystem. 
 
-## Note regarding 2.x API:
+elFinder is an open-source file manager for web, written in JavaScript using jQuery UI.
 
-FYI, I'm working on a pure 2.x API implementation.  Nothing to release yet, and the holidays are in the way,
-but wanted to "get the word out."
+## 2.x API
+
+This version provides a partial implementation of the 2.x API (the portions that can be used with FTP).
+
+Operations such as archive, copy, duplicate, etc are not possible using FTP.  Needless to say, thumbnails are also not
+supported.
 
 ## Requirements:
 
-The gem, by default, relies upon the 'image_size' ruby gem and ImageMagick's 'mogrify' and 'convert' commands.
-These requirements can be changed by implementing custom methods for determining image size
-and resizing of an image.
-
-NOTE: There is another ruby gem 'imagesize' that also defines the class ImageSize and requires 'image_size'
-If you have that one installed, elfinder will fail.  Make sure you only have 'image_size' installed if you use
-the defaults.
+Net::FTP is used to communicate with the FTP server.
 
 ## Install:
 
 * Install elFinder (http://elrte.org/redmine/projects/elfinder/wiki/Install_EN)
-* Install ImageMagick (http://www.imagemagick.org/)
 * Do whatever is necessary for your Ruby framework to tie it together.
 
 ### Rails 3
 
-* Add `gem 'el_finder'` to Gemfile
+* Add `gem 'el_finder_ftp'` to Gemfile
 * % bundle install
 * Switch to using jQuery instead of Prototype
 * Add the following action to a controller of your choosing.
 
-```ruby
-  skip_before_filter :verify_authenticity_token, :only => ['elfinder']
-
-  def elfinder
-    h, r = ElFinder::Connector.new(
-      :root => File.join(Rails.public_path, 'system', 'elfinder'),
-      :url => '/system/elfinder',
-       :perms => {
-         /^(Welcome|README)$/ => {:read => true, :write => false, :rm => false},
-         '.' => {:read => true, :write => false, :rm => false}, # '.' is the proper way to specify the home/root directory.
-         /^test$/ => {:read => true, :write => true, :rm => false},
-         'logo.png' => {:read => true},
-         /\.png$/ => {:read => false} # This will cause 'logo.png' to be unreadable.  
-                                      # Permissions err on the safe side. Once false, always false.
-       },
-       :extractors => { 
-         'application/zip' => ['unzip', '-qq', '-o'], # Each argument will be shellescaped (also true for archivers)
-         'application/x-gzip' => ['tar', '-xzf'],
-       },
-       :archivers => { 
-         'application/zip' => ['.zip', 'zip', '-qr9'], # Note first argument is archive extension
-         'application/x-gzip' => ['.tgz', 'tar', '-czf'],
-         },
-
-    ).run(params)
-
-    headers.merge!(h)
-
-    render (r.empty? ? {:nothing => true} : {:text => r.to_json}), :layout => false
-  end
-```
-
-* Or, use ElFinder::Action and el_finder, which handles most of the boilerplate for an ElFinder action:
+* Use ElFinderFtp::Action and el_finder_ftp, which handles most of the boilerplate for an ElFinderFtp action:
 
 ```ruby
-  require 'el_finder/action'
+  require 'el_finder_ftp/action'
 
   class MyController < ApplicationController
-    include ElFinder::Action
+    include ElFinderFtp::Action
 
-    el_finder(:action_name) do
+    el_finder_ftp(:action_name) do
       {
-        :root => File.join(Rails.public_path, 'system', 'elfinder'),
-        :url => '/system/elfinder',
-         :perms => {
+        :server => { host: 'my.ftp.com', username: 'username', password: 'password' },
+        :url: "/ftp",
+        :perms => {
            /^(Welcome|README)$/ => {:read => true, :write => false, :rm => false},
            '.' => {:read => true, :write => false, :rm => false}, # '.' is the proper way to specify the home/root directory.
            /^test$/ => {:read => true, :write => true, :rm => false},
            'logo.png' => {:read => true},
            /\.png$/ => {:read => false} # This will cause 'logo.png' to be unreadable.  
                                         # Permissions err on the safe side. Once false, always false.
-        },
-        :extractors => { 
-          'application/zip' => ['unzip', '-qq', '-o'], # Each argument will be shellescaped (also true for archivers)
-          'application/x-gzip' => ['tar', '-xzf'],
-        },
-        :archivers => { 
-          'application/zip' => ['.zip', 'zip', '-qr9'], # Note first argument is archive extension
-          'application/x-gzip' => ['.tgz', 'tar', '-czf'],
         },
       }
     end
@@ -103,7 +60,7 @@ the defaults.
 * Add the appropriate route to config/routes.rb such as:
 
 ```ruby
-  match 'elfinder' => 'home#elfinder'
+  match 'ftp' => 'my_controller#action_name'
 ```
 
 * Add the following to your layout. The paths may be different depending 
@@ -120,7 +77,7 @@ on where you installed the various js/css files.
   <%= javascript_tag do %>
     $().ready(function() { 
       $('#elfinder').elfinder({ 
-        url: '/elfinder',
+        url: '/ftp',
         lang: 'en'
       })
     })
@@ -128,7 +85,7 @@ on where you installed the various js/css files.
   <div id='elfinder'></div>
 ```
 
-* That's it.  I think.  If not, check out the example rails application at http://github.com/phallstrom/el_finder-rails-example.
+* That's it.
 
 ## License:
 

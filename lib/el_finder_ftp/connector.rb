@@ -4,29 +4,31 @@
 
 require 'base64'
 
-module ElFinder
+module ElFinderFtp
 
   # Represents ElFinder connector on Rails side.
   class Connector
 
     # Valid commands to run.
     # @see #run
-    VALID_COMMANDS = %w[archive duplicate edit extract mkdir mkfile open paste ping read rename resize rm tmb upload]
+    VALID_COMMANDS = %w[archive duplicate put file ls tree extract mkdir mkfile open paste ping get rename resize rm tmb upload]
+
+    attr_reader :adapter
 
     # Default options for instances.
     # @see #initialize
     DEFAULT_OPTIONS = {
-      :mime_handler => ElFinder::MimeType,
-      :image_handler => ElFinder::Image,
+      :mime_handler => ElFinderFtp::MimeType,
+      :image_handler => ElFinderFtp::Image,
       :original_filename_method => lambda { |file| file.original_filename.respond_to?(:force_encoding) ? file.original_filename.force_encoding('utf-8') : file.original_filename },
-      :disabled_commands => [],
+      :disabled_commands => ['archive', 'duplicate', 'extract', 'resize', 'tmb'],
       :allow_dot_files => true,
       :upload_max_size => '50M',
       :upload_file_mode => 0644,
       :archivers => {},
       :extractors => {},
       :home => 'Home',
-      :default_perms => { :read => true, :write => true, :rm => true, :hidden => false },
+      :default_perms => { :read => true, :write => true, :locked => false, :hidden => false },
       :perms => [],
       :thumbs => false,
       :thumbs_directory => '.thumbs',
@@ -35,19 +37,17 @@ module ElFinder
     }
 
     # Initializes new instance.
-    # @param [Hash] options Instance options. :url and :root options are required.
+    # @param [Hash] options Instance options. :url and :server options are required.
     # @option options [String] :url Entry point of ElFinder router.
-    # @option options [String] :root Root directory of ElFinder directory structure.
+    # @option options [String] :server A hash containing the :host, :username, :password, and, optionally, :port to connect to
     # @see DEFAULT_OPTIONS
     def initialize(options)
       @options = DEFAULT_OPTIONS.merge(options)
 
       raise(ArgumentError, "Missing required :url option") unless @options.key?(:url) 
-      raise(ArgumentError, "Missing required :root option") unless @options.key?(:root) 
+      raise(ArgumentError, "Missing required :server option") unless @options.key?(:server) 
       raise(ArgumentError, "Mime Handler is invalid") unless mime_handler.respond_to?(:for)
       raise(ArgumentError, "Image Handler is invalid") unless image_handler.nil? || ([:size, :resize, :thumbnail].all?{|m| image_handler.respond_to?(m)})
-
-      @root = ElFinder::Pathname.new(options[:root])
 
       @headers = {}
       @response = {}
@@ -58,33 +58,45 @@ module ElFinder
     # @option params [String] :cmd Command to be performed.
     # @see VALID_COMMANDS
     def run(params)
-      @params = params.dup
-      @headers = {}
-      @response = {}
-      @response[:errorData] = {}
 
-      if VALID_COMMANDS.include?(@params[:cmd])
+      @adapter = ElFinderFtp::FtpAdapter.new(@options[:server])
+      @root = ElFinderFtp::Pathname.new(adapter)
 
-        if @options[:thumbs]
-          @thumb_directory = @root + @options[:thumbs_directory]
-          @thumb_directory.mkdir unless @thumb_directory.exist? 
-          raise(RuntimeError, "Unable to create thumbs directory") unless @thumb_directory.directory?
+      begin
+        @params = params.dup
+        @headers = {}
+        @response = {}
+        @response[:errorData] = {}
+
+        if VALID_COMMANDS.include?(@params[:cmd])
+
+          if @options[:thumbs]
+            @thumb_directory = @root + @options[:thumbs_directory]
+            @thumb_directory.mkdir unless @thumb_directory.exist? 
+            raise(RuntimeError, "Unable to create thumbs directory") unless @thumb_directory.directory?
+          end
+
+          @current = @params[:current] ? from_hash(@params[:current]) : nil
+          @target = (@params[:target] and !@params[:target].empty?) ? from_hash(@params[:target]) : nil
+          if params[:targets]
+            @targets = @params[:targets].map{|t| from_hash(t)}
+          end
+
+          begin
+            send("_#{@params[:cmd]}")
+          rescue Net::FTPPermError
+            @response[:error] = 'Access Denied'
+          end
+        else
+          invalid_request
         end
 
-        @current = @params[:current] ? from_hash(@params[:current]) : nil
-        @target = (@params[:target] and !@params[:target].empty?) ? from_hash(@params[:target]) : nil
-        if params[:targets]
-          @targets = @params[:targets].map{|t| from_hash(t)}
-        end
+        @response.delete(:errorData) if @response[:errorData].empty?
 
-        send("_#{@params[:cmd]}")
-      else
-        invalid_request
+        return @headers, @response
+      ensure
+        adapter.close
       end
-
-      @response.delete(:errorData) if @response[:errorData].empty?
-
-      return @headers, @response
     end # of run
 
     #
@@ -141,26 +153,23 @@ module ElFinder
       if target.file?
         command_not_implemented
       elsif target.directory?
-        @response[:cwd] = cwd_for(target)
-        @response[:cdc] = target.children.
-          reject{ |child| perms_for(child)[:hidden]}.
-          sort_by{|e| e.basename.to_s.downcase}.map{|e| cdc_for(e)}.compact
+        @response[:cwd] = cdc_for(target)
+        files = [target].concat( target.files.reject{ |child| perms_for(child)[:hidden] } )
 
         if @params[:tree]
-          @response[:tree] = {
-            :name => @options[:home],
-            :hash => to_hash(@root),
-            :dirs => tree_for(@root),
-          }.merge(perms_for(@root))
+          files = files.concat( tree_for(@root) )
+        else
+          files = files.concat( target.child_directories.reject{ |child| perms_for(child)[:hidden] || child.fullpath == target.fullpath } )
         end
 
+        @response[:files] = files.map{|e| cdc_for(e)}.compact
+
         if @params[:init]
-          @response[:disabled] = @options[:disabled_commands]
-          @response[:params] = {
+          @response[:api] = 2
+          @response[:uplMaxSize] = @options[:upload_max_size]
+          @response[:options] = {
+            :disabled => @options[:disabled_commands],
             :dotFiles => @options[:allow_dot_files],
-            :uplMaxSize => @options[:upload_max_size],
-            :archives => @options[:archivers].keys,
-            :extract => @options[:extractors].keys,
             :url => @options[:url]
           }
         end
@@ -172,18 +181,36 @@ module ElFinder
 
     end # of open
 
+    def _ls
+      if @target.directory?
+        files = @target.files.reject{ |child| perms_for(child)[:hidden] }
+
+        @response[:list] = files.map{|e| e.basename.to_s }.compact
+      else
+        @response[:error] = "Directory does not exist"
+      end
+
+    end # of open
+
+    def _tree
+      if @target.directory?
+        @response[:tree] = tree_for(@target).map{|e| cdc_for(e) }.compact
+      else
+        @response[:error] = "Directory does not exist"
+      end
+
+    end # of tree
+
     #
     def _mkdir
-      if perms_for(@current)[:write] == false
+      if perms_for(@target)[:write] == false
         @response[:error] = 'Access Denied'
         return
       end
 
-      dir = @current + @params[:name]
+      dir = @target + @params[:name]
       if !dir.exist? && dir.mkdir
-        @params[:tree] = true
-        @response[:select] = [to_hash(dir)]
-        _open(@current)
+        @response[:added] = [cdc_for(dir)]
       else
         @response[:error] = "Unable to create folder"
       end
@@ -191,15 +218,14 @@ module ElFinder
 
     #
     def _mkfile
-      if perms_for(@current)[:write] == false
+      if perms_for(@target)[:write] == false
         @response[:error] = 'Access Denied'
         return
       end
 
-      file = @current + @params[:name]
+      file = @target + @params[:name]
       if !file.exist? && file.touch
-        @response[:select] = [to_hash(file)]
-        _open(@current)
+        @response[:added] = [cdc_for(file)]
       else
         @response[:error] = "Unable to create file"
       end
@@ -207,15 +233,15 @@ module ElFinder
 
     #
     def _rename
-      to = @current + @params[:name]
+      to = @target.dirname + @params[:name]
 
       perms_for_target = perms_for(@target)
-      if perms_for_target[:rm] == false
+      if perms_for_target[:locked] == true
         @response[:error] = 'Access Denied'
         return
       end
 
-      perms_for_current = perms_for(@current)
+      perms_for_current = perms_for(@target)
       if perms_for_current[:write] == false
         @response[:error] = 'Access Denied'
         return
@@ -223,41 +249,31 @@ module ElFinder
 
       if to.exist?
         @response[:error] = "Unable to rename #{@target.ftype}. '#{to.basename}' already exists"
-      elsif @target.rename(to)
-        @params[:tree] = to.directory?
-        @response[:select] = [to_hash(to)]
-        _open(@current)
-      else
-        @response[:error] = "Unable to rename #{@target.ftype}"
+      else        
+        to = @target.rename(to)
+        if to 
+          @response[:added] = [cdc_for(to)]
+          @response[:removed] = [to_hash(@target)] 
+        else
+          @response[:error] = "Unable to rename #{@target.ftype}"
+        end
       end
     end # of rename
 
     #
     def _upload
-      if perms_for(@current)[:write] == false
+      if perms_for(@target)[:write] == false
         @response[:error] = 'Access Denied'
         return
       end
-      select = []
-      @params[:upload].to_a.each do |file|
-        if file.respond_to?(:tempfile)
-          the_file = file.tempfile
-        else
-          the_file = file
-        end
-        if upload_max_size_in_bytes > 0 && File.size(the_file.path) > upload_max_size_in_bytes
-          @response[:error] ||= "Some files were not uploaded"
-          @response[:errorData][@options[:original_filename_method].call(file)] = 'File exceeds the maximum allowed filesize'
-        else
-          dst = @current + @options[:original_filename_method].call(file)
-          the_file.close
-          src = the_file.path
-          FileUtils.mv(src, dst.fullpath)
-          FileUtils.chmod @options[:upload_file_mode], dst
-          select << to_hash(dst)
-        end
+      added_list = []
+      @params[:upload].to_a.each do |io|
+        dst = @target + @options[:original_filename_method].call(io)
+        dst.write(io)
+        
+        added_list.push cdc_for(dst)
       end
-      @response[:select] = select unless select.empty?
+      @response[:added] = added_list unless added_list.empty?
       _open(@current)
     end # of upload
 
@@ -273,31 +289,34 @@ module ElFinder
         return
       end
 
+      added_list = []
+      removed_list = []
       @targets.to_a.each do |src|
-        if perms_for(src)[:read] == false || (@params[:cut].to_i > 0 && perms_for(src)[:rm] == false)
-          @response[:error] ||= 'Some files were not copied.'
+        if perms_for(src)[:read] == false || (@params[:cut].to_i > 0 && perms_for(src)[:locked] == true)
+          @response[:error] ||= 'Some files were not moved.'
           @response[:errorData][src.basename.to_s] = "Access Denied"
           return
         else
           dst = from_hash(@params[:dst]) + src.basename
           if dst.exist?
-            @response[:error] ||= 'Some files were unable to be copied'
+            @response[:error] ||= 'The target file already exists'
             @response[:errorData][src.basename.to_s] = "already exists in '#{dst.dirname}'"
           else
             if @params[:cut].to_i > 0
-              src.rename(dst)
+              adapter.move(src, dst)
+
+              added_list.push cdc_for(dst)
+              removed_list.push to_hash(src)
             else
-              if src.directory?
-                FileUtils.cp_r(src.fullpath, dst.fullpath)
-              else
-                FileUtils.cp(src.fullpath, dst.fullpath)
-              end
+              command_not_implemented
+              return
             end
           end
         end
       end
-      @params[:tree] = true
-      _open(@current)
+
+      @response[:added] = added_list unless added_list.empty?
+      @response[:removed] = removed_list unless removed_list.empty?
     end # of paste
 
     #
@@ -305,130 +324,69 @@ module ElFinder
       if @targets.empty?
         @response[:error] = "No files were selected for removal"
       else
+        removed_list = []        
         @targets.to_a.each do |target|
-          remove_target(target)
+          removed_list.concat remove_target(target)
         end
-        @params[:tree] = true
-        _open(@current)
+        @response[:removed] = removed_list unless removed_list.empty?
       end
     end # of rm
 
     #
     def _duplicate
-      if perms_for(@target)[:read] == false 
-        @response[:error] = 'Access Denied'
-        @response[:errorData][@target.basename.to_s] = 'Unable to read'
-        return
-      end
-      if perms_for(@target.dirname)[:write] == false 
-        @response[:error] = 'Access Denied'
-        @response[:errorData][@target.dirname.to_s] = 'Unable to write'
-        return
-      end
-
-      duplicate = @target.duplicate
-      if @target.directory?
-        FileUtils.cp_r(@target, duplicate.fullpath)
-      else
-        FileUtils.copy(@target, duplicate.fullpath)
-      end
-      @response[:select] = [to_hash(duplicate)]
-      _open(@current)
+      command_not_implemented 
     end # of duplicate
 
     # 
-    def _read
+    def _get
       if perms_for(@target)[:read] == true
         @response[:content] = @target.read
       else
         @response[:error] = 'Access Denied'
       end
-    end # of read
+    end # of get
 
-    #
-    def _edit
-      perms = perms_for(@target)
-      if perms[:read] == true && perms[:write] == true
-        @target.open('w') { |f| f.write @params[:content] }
-        @response[:file] = cdc_for(@target)
+    # 
+    def _file
+      if perms_for(@target)[:read] == true
+        @response[:file_data] = @target.read
+        @response[:mime_type] = mime_handler.for(@target)
+        @response[:disposition] = 'attachment'
+        @response[:filename] = @target.basename.to_s
       else
         @response[:error] = 'Access Denied'
       end
-    end # of edit
+    end # of file
+
+    #
+    def _put
+      perms = perms_for(@target)
+      if perms[:read] == true && perms[:write] == true
+        @target.write @params[:content]
+        @response[:changed] = [cdc_for(@target)]
+      else
+        @response[:error] = 'Access Denied'
+      end
+    end # of put
 
     #
     def _extract
-      @response[:error] = 'Invalid Parameters' and return if @target.nil? || @current.nil? || !(@target.file? && @current.directory?)
-      @response[:error] = 'Access Denied' and return unless perms_for(@target)[:read] == true && perms_for(@current)[:write] == true
-      @response[:error] = 'No extractor available for this file type' and return if (extractor = @options[:extractors][mime_handler.for(@target)]).nil?
-      cmd = ['cd', @current.to_s.shellescape, '&&', extractor.map(&:shellescape), @target.basename.to_s.shellescape].flatten.join(' ')
-      if system(cmd)
-        @params[:tree] = true
-        _open(@current)
-      else
-        @response[:error] = 'Unable to extract files from archive'
-      end
+      command_not_implemented
     end # of extract
 
     #
     def _archive
-      @response[:error] = 'Invalid Parameters' and return unless !@targets.nil? && @targets.all?{|e| e && e.exist?} && @current && @current.directory?
-      @response[:error] = 'Access Denied' and return unless !@targets.nil? && @targets.all?{|e| perms_for(e)[:read]} && perms_for(@current)[:write] == true
-      @response[:error] = 'No archiver available for this file type' and return if (archiver = @options[:archivers][@params[:type]]).nil?
-      extension = archiver.shift
-      basename = @params[:name] || @targets.first.basename_sans_extension
-      archive = (@root + "#{basename}#{extension}").unique
-      cmd = ['cd', @current.to_s.shellescape, '&&', archiver.map(&:shellescape), archive.to_s.shellescape, @targets.map{|t| t.basename.to_s.shellescape}].flatten.join(' ')
-      if system(cmd)
-        @response[:select] = [to_hash(archive)]
-        _open(@current)
-      else
-        @response[:error] = 'Unable to create archive'
-      end
+      command_not_implemented
     end # of archive
 
     #
     def _tmb
-      if image_handler.nil?
-        command_not_implemented
-      else
-        @response[:current] = to_hash(@current)
-        @response[:images] = {}
-        idx = 0
-        @current.children.select{|e| mime_handler.for(e) =~ /image/}.each do |img|
-          if idx >= @options[:thumbs_at_once]
-            @response[:tmb] = true
-            break
-          end
-          thumbnail = thumbnail_for(img)
-          unless thumbnail.file?
-            image_handler.thumbnail(img, thumbnail, :width => @options[:thumbs_size].to_i, :height => @options[:thumbs_size].to_i)
-            @response[:images][to_hash(img)] = @options[:url] + '/' + thumbnail.path.to_s
-            idx += 1
-          end
-        end
-      end
-
+      command_not_implemented
     end # of tmb
 
     #
     def _resize
-      if image_handler.nil?
-        command_not_implemented
-      else
-        if @target.file?
-          perms = perms_for(@target)
-          if perms[:read] == true && perms[:write] == true
-            image_handler.resize(@target, :width => @params[:width].to_i, :height => @params[:height].to_i)
-            @response[:select] = [to_hash(@target)]
-            _open(@current)
-          else
-            @response[:error] = 'Access Denied'
-          end
-        else
-          @response[:error] = "Unable to resize file. It does not exist"
-        end
-      end
+      command_not_implemented
     end # of resize
     
     ################################################################################
@@ -459,25 +417,31 @@ module ElFinder
 
     #
     def remove_target(target)
+      removed = []
       if target.directory?
         target.children.each do |child|
-          remove_target(child)
+          removed.concat remove_target(child)
         end
       end
-      if perms_for(target)[:rm] == false
+      if perms_for(target)[:locked] == true
         @response[:error] ||= 'Some files/directories were unable to be removed'
         @response[:errorData][target.basename.to_s] = "Access Denied"
       else
         begin
+          removed.push to_hash(target)
           target.unlink
           if @options[:thumbs] && (thumbnail = thumbnail_for(target)).file?
+            removed.push to_hash(thumbnail)
             thumbnail.unlink
           end
-        rescue
+        rescue Exception => ex
+          puts "Exception during remove: #{ex}"
           @response[:error] ||= 'Some files/directories were unable to be removed'
           @response[:errorData][target.basename.to_s] = "Remove failed"
         end
       end
+
+      removed
     end
 
     def mime_handler
@@ -489,32 +453,26 @@ module ElFinder
       @options[:image_handler]
     end
 
-    # 
-    def cwd_for(pathname)
-      {
-        :name => pathname.basename.to_s,
-        :hash => to_hash(pathname),
-        :mime => 'directory',
-        :rel => pathname.is_root? ? @options[:home] : (@options[:home] + '/' + pathname.path.to_s),
-        :size => 0,
-        :date => pathname.mtime.to_s,
-      }.merge(perms_for(pathname))
-    end
-
     def cdc_for(pathname)
       return nil if @options[:thumbs] && pathname.to_s == @thumb_directory.to_s
       response = {
-        :name => pathname.basename.to_s,
+        :name => pathname.is_root? ? "Home" : pathname.basename.to_s,
         :hash => to_hash(pathname),
         :date => pathname.mtime.to_s,
+        :ts => pathname.mtime.to_i
       }
       response.merge! perms_for(pathname)
+
+      response[:phash] = to_hash(pathname.dirname) unless pathname.is_root?
 
       if pathname.directory?
         response.merge!(
           :size => 0,
-          :mime => 'directory'
+          :mime => 'directory', 
+          :dirs => pathname.child_directories.size
         )
+
+        response[:volumeid] = 'Home' if pathname.is_root?
       elsif pathname.file?
         response.merge!(
           :size => pathname.size, 
@@ -551,17 +509,29 @@ module ElFinder
 
     #
     def tree_for(root)
-      root.child_directories.
-      reject{ |child| 
-        ( @options[:thumbs] && child.to_s == @thumb_directory.to_s ) || perms_for(child)[:hidden]
-      }.
-      sort_by{|e| e.basename.to_s.downcase}.
-      map { |child|
-          {:name => child.basename.to_s,
-           :hash => to_hash(child),
-           :dirs => tree_for(child),
-          }.merge(perms_for(child))
-      }
+
+      # root.child_directories.
+      # reject{ |child| 
+      #   ( @options[:thumbs] && child.to_s == @thumb_directory.to_s ) || perms_for(child)[:hidden]
+      # }.
+      # sort_by{|e| e.basename.to_s.downcase}.
+      # map { |child|
+      #     {:name => child.basename.to_s,
+      #      :hash => to_hash(child),
+      #      :dirs => tree_for(child),
+      #     }.merge(perms_for(child))
+      # }
+
+      children = [root]
+      flattened_tree = []
+      while !children.empty? do
+        child = children.pop
+        unless (@options[:thumbs] && child.to_s == @thumb_directory.to_s ) || perms_for(child)[:hidden] 
+          flattened_tree.push child
+          children.concat child.child_directories
+        end
+      end
+      flattened_tree
     end # of tree_for
 
     #
@@ -569,17 +539,17 @@ module ElFinder
       skip = [options[:skip]].flatten
       response = {}
 
-      response[:read] = pathname.readable? if pathname.exist?
+      response[:read] = pathname.readable? 
       response[:read] &&= specific_perm_for(pathname, :read)
       response[:read] &&= @options[:default_perms][:read] 
 
-      response[:write] = pathname.writable? if pathname.exist?
+      response[:write] = pathname.writable? 
       response[:write] &&= specific_perm_for(pathname, :write) 
       response[:write] &&= @options[:default_perms][:write]
 
-      response[:rm] = !pathname.is_root?
-      response[:rm] &&= specific_perm_for(pathname, :rm)
-      response[:rm] &&= @options[:default_perms][:rm]
+      response[:locked] = pathname.is_root?
+      response[:locked] &&= specific_perm_for(pathname, :locked)
+      response[:locked] &&= @options[:default_perms][:locked]
 
       response[:hidden] = false
       response[:hidden] ||= specific_perm_for(pathname, :hidden)
@@ -590,7 +560,7 @@ module ElFinder
 
     #
     def specific_perm_for(pathname, perm)
-      pathname = pathname.path if pathname.is_a?(ElFinder::Pathname)
+      pathname = pathname.path if pathname.is_a?(ElFinderFtp::Pathname)
       matches = @options[:perms].select{ |k,v| pathname.to_s.send((k.is_a?(String) ? :== : :match), k) }
       if perm == :hidden
         matches.one?{|e| e.last[perm] }
@@ -606,8 +576,8 @@ module ElFinder
 
     #
     def command_not_implemented
-      @response[:error] = "Command '#{@params[:cmd]}' not yet implemented"
+      @response[:error] = "Command '#{@params[:cmd]}' not implemented"
     end # of command_not_implemented
 
   end # of class Connector
-end # of module ElFinder
+end # of module ElFinderFtp

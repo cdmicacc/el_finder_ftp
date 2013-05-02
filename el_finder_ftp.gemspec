@@ -1,18 +1,18 @@
 # -*- encoding: utf-8 -*-
 $:.push File.expand_path("../lib", __FILE__)
-require "el_finder/version"
+require "el_finder_ftp/version"
 
 Gem::Specification.new do |s|
-  s.name        = "el_finder"
-  s.version     = ElFinder::VERSION
+  s.name        = "el_finder_ftp"
+  s.version     = ElFinderFtp::VERSION
   s.platform    = Gem::Platform::RUBY
   s.authors     = ["Philip Hallstrom"]
   s.email       = ["philip@pjkh.com"]
   s.homepage    = "http://github.com/phallstrom/el_finder"
-  s.summary     = %q{elFinder server side connector for Ruby.}
+  s.summary     = %q{elFinder server side connector for Ruby, with an FTP backend.}
   s.description = %q{Ruby library to provide server side functionality for elFinder.  elFinder is an open-source file manager for web, written in JavaScript using jQuery UI.}
 
-  s.rubyforge_project = "el_finder"
+  s.rubyforge_project = "el_finder_ftp"
 
   s.files         = `git ls-files`.split("\n")
   s.test_files    = `git ls-files -- {test,spec,features}/*`.split("\n")

@@ -1,22 +1,29 @@
 require 'fileutils'
 require 'pathname'
 
-module ElFinder
+module ElFinderFtp
 
   class Pathname
-    attr_reader :root, :path
+    attr_reader :root, :path, :adapter
 
     #
-    def initialize(root, path = '.')
-      @root = root.is_a?(ElFinder::Pathname) ? root.root : ::Pathname.new(root)
+    def initialize(adapter_or_root, path = '.')
+      @adapter = adapter_or_root.is_a?(ElFinderFtp::Pathname) ? adapter_or_root.adapter : adapter_or_root
 
-      @path = ::Pathname.new(path) 
-      @path = path.is_a?(ElFinder::Pathname) ? path.path : ::Pathname.new(path)
+      @root = path.is_a?(ElFinderFtp::Pathname) ? path.root : FtpPathname.new(@adapter, '/')
+
+      if path.is_a?(ElFinderFtp::Pathname) 
+        @path = path.path 
+      elsif path.is_a?(ElFinderFtp::FtpPathname) 
+        @path = path
+      else
+        @path = FtpPathname.new(@adapter, path)
+      end
       if absolute?
         if @path.cleanpath.to_s.start_with?(@root.to_s)
-          @path = ::Pathname.new @path.to_s.slice((@root.to_s.length + 1)..-1)
+          @path = FtpPathname.new( @adapter, @path.to_s.slice((@root.to_s.length)..-1), @path.attrs)
         elsif @path.cleanpath.to_s.start_with?(@root.realpath.to_s)
-          @path = ::Pathname.new @path.to_s.slice((@root.realpath.to_s.length + 1)..-1)
+          @path = FtpPathname.new( @adapter, @path.to_s.slice((@root.realpath.to_s.length)..-1), @path.attrs)
         else
           raise SecurityError, "Absolute paths are not allowed" 
         end
@@ -27,10 +34,10 @@ module ElFinder
     
     #
     def +(other)
-      if other.is_a? ::ElFinder::Pathname
+      if other.is_a? ::ElFinderFtp::Pathname
         other = other.path
       end
-      self.class.new(@root, (@path + other).to_s)
+      self.class.new(@adapter, @path + other)
     end # of +
 
     #
@@ -55,7 +62,7 @@ module ElFinder
 
     #
     def fullpath
-      @path.nil? ? @root : @root + @path
+      @fullpath ||= (@path.nil? ? @root : @root + @path)
     end # of fullpath
 
     #
@@ -85,7 +92,7 @@ module ElFinder
 
     #
     def dirname
-      self.class.new(@root, @path.dirname)
+      self.class.new(@adapter, @path.dirname)
     end # of basename
 
     #
@@ -101,17 +108,23 @@ module ElFinder
 
     # 
     def child_directories(with_directory=true)
-      realpath.children(with_directory).select{ |child| child.directory? }.map{|e| self.class.new(@root, e)}
+      adapter.children(self, with_directory).select{ |child| child.directory? }.map{|e| self.class.new(@adapter, e)}
     end
+
+    # 
+    def files(with_directory=true)
+      adapter.children(self, with_directory).select{ |child| child.file? }.map{|e| self.class.new(@adapter, e)}
+    end
+
 
     #
     def children(with_directory=true)
-      realpath.children(with_directory).map{|e| self.class.new(@root, e)}
+      adapter.children(self, with_directory).map{|e| self.class.new(@adapter, e)}
     end
 
     #
     def touch(options = {})
-      FileUtils.touch(cleanpath, options)
+      adapter.touch(cleanpath, options)
     end
 
     #
@@ -121,10 +134,11 @@ module ElFinder
     
     #
     def unique
-      return self.dup unless self.file?
+      return self.dup unless fullpath.file?
       copy = 1
       begin
-        new_file = self.class.new(@root, dirname + "#{basename_sans_extension} #{copy}#{extname}")
+        new_file = self.class.new(@adapter, dirname + "#{basename_sans_extension} #{copy}#{extname}")
+        puts "Trying #{new_file} (#{new_file.class})"
         copy += 1
       end while new_file.exist?
       new_file
@@ -139,7 +153,7 @@ module ElFinder
         copy = $2.to_i
       end
       begin
-        new_file = self.class.new(@root, dirname + "#{_basename} copy #{copy}#{extname}")
+        new_file = self.class.new(@adapter, dirname + "#{_basename} copy #{copy}#{extname}")
         copy += 1
       end while new_file.exist?
       new_file
@@ -147,12 +161,9 @@ module ElFinder
 
     #
     def rename(to)
-      to = self.class.new(@root, to.to_s)
+      to = self.class.new(@adapter, to)
       realpath.rename(to.fullpath.to_s)
-    rescue Errno::EXDEV
-      FileUtils.move(realpath.to_s, to.fullpath.to_s)
-    ensure
-      @path = to.path
+      to
     end # of rename
 
     {
@@ -165,6 +176,7 @@ module ElFinder
       'mtime'      => {:path => 'realpath',                                             },
       'open'       => {:path => 'fullpath',                  :args => '(*args, &block)' },
       'read'       => {:path => 'fullpath',                  :args => '(*args)'         },
+      'write'       => {:path => 'fullpath',                  :args => '(*args)'         },
       'readlink'   => {:path => 'fullpath',                                             },
       'readable?'  => {:path => 'realpath', :rescue => true                             },
       'size'       => {:path => 'realpath',                                             },
@@ -183,4 +195,4 @@ module ElFinder
 
   end # of class Pathname
 
-end # of module ElFinder
+end # of module ElFinderFtp

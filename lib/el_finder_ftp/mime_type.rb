@@ -1,4 +1,4 @@
-module ElFinder
+module ElFinderFtp
 
   # Represents default MIME types recognizer.
   class MimeType
@@ -75,9 +75,9 @@ module ElFinder
     # @return [String] MIME type if known; 'unknown/unknown' otherwise.
     def self.for(pathname)
       pathname = ::Pathname.new(pathname) if pathname.is_a?(String)
-      TYPES[pathname.extname.downcase[1..-1]] || 'unknown/unknown'
+      TYPES[pathname.extname.downcase[1..-1]] || 'application/octet-stream'
     end # of for
 
   end # of class MimeType
 
-end # of module ElFinder
+end # of module ElFinderFtp

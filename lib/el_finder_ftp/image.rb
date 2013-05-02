@@ -2,7 +2,7 @@ require 'rubygems'
 require 'shellwords'
 require 'image_size'
 
-module ElFinder
+module ElFinderFtp
 
   # Represents default image handler.
   # It uses *mogrify* to resize images and *convert* to create thumbnails.
@@ -27,4 +27,4 @@ module ElFinder
 
   end # of class Image
 
-end # of module ElFinder
+end # of module ElFinderFtp
