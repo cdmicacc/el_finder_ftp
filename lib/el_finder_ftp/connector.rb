@@ -435,7 +435,7 @@ module ElFinderFtp
             thumbnail.unlink
           end
         rescue Exception => ex
-          puts "Exception during remove: #{ex}"
+          # puts "Exception during remove: #{ex}"
           @response[:error] ||= 'Some files/directories were unable to be removed'
           @response[:errorData][target.basename.to_s] = "Remove failed"
         end

@@ -201,7 +201,7 @@ class TestPathname < Test::Unit::TestCase
   def test_open
     p = ElFinder::Pathname.new(@vroot, 'newfile')
     assert_equal false, p.file?
-    p.open('w') {|f| f.puts "new"}
+    p.open('w') {|f| f.# puts "new"}
     assert_equal true, p.file?
     assert_equal File.read(File.join(@vroot, 'newfile')), p.read
   end

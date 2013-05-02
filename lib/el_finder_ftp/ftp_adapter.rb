@@ -12,7 +12,7 @@ module ElFinderFtp
 
     def connect
       unless connected?
-        puts "Connecting to #{server[:host]}"
+        # puts "Connecting to #{server[:host]}"
         @connection = Net::FTP.new( server[:host], server[:username], server[:password] )
       end
 
@@ -20,7 +20,7 @@ module ElFinderFtp
     end
 
     def close
-      puts "Closing connection to #{server[:host]}"
+      # puts "Closing connection to #{server[:host]}"
       @connection.close if connected?
     end
 
@@ -29,7 +29,7 @@ module ElFinderFtp
     end
 
     def children(pathname, with_directory)
-      puts "Fetching children of #{pathname}"
+      # puts "Fetching children of #{pathname}"
       cached :children, pathname do
         ftp_context(pathname) do
           ls.map { |entry|
@@ -44,7 +44,7 @@ module ElFinderFtp
     end
 
     def touch(pathname, options={})
-      puts "Touching #{pathname}"
+      # puts "Touching #{pathname}"
       unless exist?(pathname)
         ftp_context do
           empty_file = StringIO.new("")
@@ -61,7 +61,7 @@ module ElFinderFtp
     end
 
     def exist?(pathname)
-      # puts "Testing existence of #{pathname}"
+      # # puts "Testing existence of #{pathname}"
       cached :exist?, pathname do
         ftp_context do
           begin
@@ -82,7 +82,7 @@ module ElFinderFtp
     end
 
     def path_type(pathname)
-      # puts "Getting type of #{pathname}"
+      # # puts "Getting type of #{pathname}"
       cached :path_type, pathname do
         ftp_context do
           begin
@@ -96,7 +96,7 @@ module ElFinderFtp
     end
     
     def size(pathname)
-      puts "Getting size of #{pathname}"
+      # puts "Getting size of #{pathname}"
       cached :size, pathname do
         ftp_context do
           begin
@@ -109,7 +109,7 @@ module ElFinderFtp
     end
 
     def mtime(pathname)
-      puts "Getting modified time of #{pathname}"
+      # puts "Getting modified time of #{pathname}"
       cached :mtime, pathname do
         ftp_context do
           begin
@@ -123,7 +123,7 @@ module ElFinderFtp
     end
 
     def rename(pathname, new_name)
-      puts "Renaming #{pathname} to #{new_name}"
+      # puts "Renaming #{pathname} to #{new_name}"
       ftp_context do
         rename(pathname.to_s, new_name.to_s)
       end
@@ -136,7 +136,7 @@ module ElFinderFtp
     # the RNFR.  This seems to allow the (Microsoft) FTP server to rename a directory
     # into another directory (e.g. /subdir/target -> /target )
     def move(pathname, new_name)
-      puts "Moving #{pathname} to #{new_name}"
+      # puts "Moving #{pathname} to #{new_name}"
       ftp_context(pathname.dirname) do
         rename(pathname.basename.to_s, new_name.to_s)
       end
@@ -145,7 +145,7 @@ module ElFinderFtp
     end
 
     def mkdir(pathname)
-      puts "Creating directory #{pathname}"
+      # puts "Creating directory #{pathname}"
       ftp_context do
         mkdir(pathname.to_s)
       end
@@ -153,7 +153,7 @@ module ElFinderFtp
     end
 
     def rmdir(pathname)
-      puts "Removing directory #{pathname}"
+      # puts "Removing directory #{pathname}"
       ftp_context do
         rmdir(pathname.to_s)
       end
@@ -161,7 +161,7 @@ module ElFinderFtp
     end
 
     def delete(pathname)
-      puts "Deleting #{pathname}"
+      # puts "Deleting #{pathname}"
       ftp_context do
         if pathname.directory?
           rmdir(pathname.to_s)
@@ -173,7 +173,7 @@ module ElFinderFtp
     end
 
     def retrieve(pathname)
-      puts "Retrieving #{pathname}"
+      # puts "Retrieving #{pathname}"
       ftp_context do
         content = StringIO.new()
         begin
@@ -188,7 +188,7 @@ module ElFinderFtp
     end
 
     def store(pathname, content)
-      puts "Storing #{pathname}"
+      # puts "Storing #{pathname}"
       ftp_context do        
         # If content is a string, wrap it in a StringIO
         content = StringIO.new(content) if content.is_a? String
@@ -215,7 +215,7 @@ module ElFinderFtp
       begin
         self.connection.instance_eval &block
       rescue Net::FTPPermError => ex
-        puts "Operation failed with error #{ex}"
+        # puts "Operation failed with error #{ex}"
         raise
       end
     end
