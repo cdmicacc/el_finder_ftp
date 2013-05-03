@@ -4,10 +4,12 @@
 
 ## Description:
 
-Based on a Ruby library to provide server side functionality for elFinder, this version provides a Rails backend for
-elFinder that uses an FTP server as its file storage, rather than the local filesystem. 
+This is based on Phallstrom's excellent Ruby library to provide server side functionality for 
+elFinder: https://github.com/phallstrom/el_finder
 
-elFinder is an open-source file manager for web, written in JavaScript using jQuery UI.
+This version provides a Rails backend for elFinder that uses an FTP server as its file storage,
+rather than the local filesystem.  elFinder is an open-source file manager for web, written in 
+JavaScript using jQuery UI.
 
 ## 2.x API
 
