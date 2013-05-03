@@ -2,6 +2,7 @@
 # http://elrte.org/redmine/projects/elfinder/wiki/Client-Server_Protocol_EN
 #
 
+require 'logger'
 require 'base64'
 
 module ElFinderFtp
@@ -52,6 +53,15 @@ module ElFinderFtp
       @headers = {}
       @response = {}
     end # of initialize
+
+    # Logger is a class property
+    class <<self
+      def logger
+        @logger ||= Logger.new(STDOUT)
+      end
+
+      attr_writer :logger
+    end
 
     # Runs request-response cycle.
     # @param [Hash] params Request parameters. :cmd option is required.
@@ -435,7 +445,6 @@ module ElFinderFtp
             thumbnail.unlink
           end
         rescue Exception => ex
-          # puts "Exception during remove: #{ex}"
           @response[:error] ||= 'Some files/directories were unable to be removed'
           @response[:errorData][target.basename.to_s] = "Remove failed"
         end

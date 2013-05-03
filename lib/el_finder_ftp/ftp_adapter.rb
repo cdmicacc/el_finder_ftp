@@ -12,7 +12,7 @@ module ElFinderFtp
 
     def connect
       unless connected?
-        # puts "Connecting to #{server[:host]}"
+        ElFinderFtp::Connector.logger.info "  \e[1;32mFTP:\e[0m  Connecting to #{server[:host]} as #{server[:username]}"
         @connection = Net::FTP.new( server[:host], server[:username], server[:password] )
       end
 
@@ -20,7 +20,7 @@ module ElFinderFtp
     end
 
     def close
-      # puts "Closing connection to #{server[:host]}"
+      ElFinderFtp::Connector.logger.info "  \e[1;32mFTP:\e[0m  Closing connection to #{server[:host]}"
       @connection.close if connected?
     end
 
@@ -29,9 +29,9 @@ module ElFinderFtp
     end
 
     def children(pathname, with_directory)
-      # puts "Fetching children of #{pathname}"
       cached :children, pathname do
         ftp_context(pathname) do
+          ElFinderFtp::Connector.logger.debug "  \e[1;32mFTP:\e[0m    Fetching children of #{pathname}"
           ls.map { |entry|
             if with_directory
               pathname.fullpath + ::ElFinderFtp::FtpPathname.new(self, entry)
@@ -44,9 +44,9 @@ module ElFinderFtp
     end
 
     def touch(pathname, options={})
-      # puts "Touching #{pathname}"
       unless exist?(pathname)
         ftp_context do
+          ElFinderFtp::Connector.logger.debug "  \e[1;32mFTP:\e[0m    Touching #{pathname}"
           empty_file = StringIO.new("")
           # File does not exist, create
           begin
@@ -61,9 +61,9 @@ module ElFinderFtp
     end
 
     def exist?(pathname)
-      # # puts "Testing existence of #{pathname}"
       cached :exist?, pathname do
         ftp_context do
+          ElFinderFtp::Connector.logger.debug "  \e[1;32mFTP:\e[0m    Testing existence of #{pathname}"
           begin
             # Test if the file exists            
             size(pathname.to_s)
@@ -82,9 +82,9 @@ module ElFinderFtp
     end
 
     def path_type(pathname)
-      # # puts "Getting type of #{pathname}"
       cached :path_type, pathname do
         ftp_context do
+          ElFinderFtp::Connector.logger.debug "  \e[1;32mFTP:\e[0m    Getting type of #{pathname}"
           begin
             chdir(pathname.to_s)
             :directory
@@ -96,9 +96,9 @@ module ElFinderFtp
     end
     
     def size(pathname)
-      # puts "Getting size of #{pathname}"
       cached :size, pathname do
         ftp_context do
+          ElFinderFtp::Connector.logger.debug "  \e[1;32mFTP:\e[0m    Getting size of #{pathname}"
           begin
             size(pathname.to_s)
           rescue Net::FTPPermError => e
@@ -109,22 +109,22 @@ module ElFinderFtp
     end
 
     def mtime(pathname)
-      # puts "Getting modified time of #{pathname}"
       cached :mtime, pathname do
         ftp_context do
+          ElFinderFtp::Connector.logger.debug "  \e[1;32mFTP:\e[0m    Getting modified time of #{pathname}"
           begin
             mtime(pathname.to_s)
           rescue Net::FTPPermError => e
             # This command doesn't work on directories
-            nil
+            0
           end
         end
       end
     end
 
     def rename(pathname, new_name)
-      # puts "Renaming #{pathname} to #{new_name}"
       ftp_context do
+        ElFinderFtp::Connector.logger.debug "  \e[1;32mFTP:\e[0m    Renaming #{pathname} to #{new_name}"
         rename(pathname.to_s, new_name.to_s)
       end
       clear_cache(pathname)
@@ -136,8 +136,8 @@ module ElFinderFtp
     # the RNFR.  This seems to allow the (Microsoft) FTP server to rename a directory
     # into another directory (e.g. /subdir/target -> /target )
     def move(pathname, new_name)
-      # puts "Moving #{pathname} to #{new_name}"
       ftp_context(pathname.dirname) do
+        ElFinderFtp::Connector.logger.debug "  \e[1;32mFTP:\e[0m    Moving #{pathname} to #{new_name}"
         rename(pathname.basename.to_s, new_name.to_s)
       end
       clear_cache(pathname)
@@ -145,24 +145,24 @@ module ElFinderFtp
     end
 
     def mkdir(pathname)
-      # puts "Creating directory #{pathname}"
       ftp_context do
+        ElFinderFtp::Connector.logger.debug "  \e[1;32mFTP:\e[0m    Creating directory #{pathname}"
         mkdir(pathname.to_s)
       end
       clear_cache(pathname)
     end
 
     def rmdir(pathname)
-      # puts "Removing directory #{pathname}"
       ftp_context do
+        ElFinderFtp::Connector.logger.debug "  \e[1;32mFTP:\e[0m    Removing directory #{pathname}"
         rmdir(pathname.to_s)
       end
       clear_cache(pathname)
     end
 
     def delete(pathname)
-      # puts "Deleting #{pathname}"
       ftp_context do
+        ElFinderFtp::Connector.logger.debug "  \e[1;32mFTP:\e[0m    Deleting #{pathname}"
         if pathname.directory?
           rmdir(pathname.to_s)
         else
@@ -173,8 +173,8 @@ module ElFinderFtp
     end
 
     def retrieve(pathname)
-      # puts "Retrieving #{pathname}"
       ftp_context do
+        ElFinderFtp::Connector.logger.debug "  \e[1;32mFTP:\e[0m    Retrieving #{pathname}"
         content = StringIO.new()
         begin
           retrbinary("RETR #{pathname}", 10240) do |block|
@@ -188,8 +188,8 @@ module ElFinderFtp
     end
 
     def store(pathname, content)
-      # puts "Storing #{pathname}"
       ftp_context do        
+        ElFinderFtp::Connector.logger.debug "  \e[1;32mFTP:\e[0m    Storing #{pathname}"
         # If content is a string, wrap it in a StringIO
         content = StringIO.new(content) if content.is_a? String
         begin
@@ -208,15 +208,28 @@ module ElFinderFtp
     # in the context of that connection.  If a pathname is provided, it is
     # used to set the current working directory first
     def ftp_context(pathname = nil, &block)
-      connect
-
-      self.connection.chdir(pathname) unless pathname.nil?
-
       begin
+        connect
+
+        self.connection.chdir(pathname) unless pathname.nil?
+      
         self.connection.instance_eval &block
       rescue Net::FTPPermError => ex
-        # puts "Operation failed with error #{ex}"
-        raise
+        if ex.message =~ /User cannot log in/
+          ElFinderFtp::Connector.logger.info "  \e[1;32mFTP:\e[0m    Authentication required: #{ex}"
+          raise FtpAuthenticationError.new(ex.message)
+        else
+          ElFinderFtp::Connector.logger.error "  \e[1;32mFTP:\e[0m    Operation failed with error #{ex}"
+          raise
+        end
+      rescue Net::FTPReplyError => ex
+        if ex.message =~ /Password required/
+          ElFinderFtp::Connector.logger.info "  \e[1;32mFTP:\e[0m    Authentication required: #{ex}"
+          raise FtpAuthenticationError.new(ex.message)
+        else
+          ElFinderFtp::Connector.logger.error "  \e[1;32mFTP:\e[0m    Operation failed with error #{ex}"
+          raise
+        end
       end
     end
 

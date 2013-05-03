@@ -6,9 +6,9 @@ Gem::Specification.new do |s|
   s.name        = "el_finder_ftp"
   s.version     = ElFinderFtp::VERSION
   s.platform    = Gem::Platform::RUBY
-  s.authors     = ["Philip Hallstrom"]
-  s.email       = ["philip@pjkh.com"]
-  s.homepage    = "http://github.com/phallstrom/el_finder"
+  s.authors     = ["Chris Micacchi", "Philip Hallstrom"]
+  s.email       = ["cmicacchi@solvco.com", "philip@pjkh.com"]
+  s.homepage    = "https://github.com/Nivio/el_finder_ftp"
   s.summary     = %q{elFinder server side connector for Ruby, with an FTP backend.}
   s.description = %q{Ruby library to provide server side functionality for elFinder.  elFinder is an open-source file manager for web, written in JavaScript using jQuery UI.}
 
@@ -22,6 +22,5 @@ Gem::Specification.new do |s|
   s.add_dependency('image_size', '>= 1.0.0')
   s.add_development_dependency('yard', '~> 0.8.1')
   s.add_development_dependency('redcarpet', '~> 2.1.1')
-  s.requirements << 'ImageMagick'
 
 end

@@ -1,1 +1,5 @@
 - Complain if root directory is missing.
+- There's probably a lot of redundancy now between ElFinderFtp::Pathname and ElFinderFtp::FtpPathname, 
+  since this is based off of the preexisting Ruby ElFinder backend, which used the Ruby stdlib's 
+  ::Pathname where I've used ElFinderFtp::Pathname.
+- I deleted all the tests but didn't write new ones yet. I probably should.

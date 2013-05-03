@@ -138,7 +138,6 @@ module ElFinderFtp
       copy = 1
       begin
         new_file = self.class.new(@adapter, dirname + "#{basename_sans_extension} #{copy}#{extname}")
-        # puts "Trying #{new_file} (#{new_file.class})"
         copy += 1
       end while new_file.exist?
       new_file
