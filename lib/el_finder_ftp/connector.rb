@@ -59,8 +59,9 @@ module ElFinderFtp
       def logger
         @logger ||= Logger.new(STDOUT)
       end
-
-      attr_writer :logger
+      def logger=(val)
+        @logger = val
+      end      
     end
 
     # Runs request-response cycle.
