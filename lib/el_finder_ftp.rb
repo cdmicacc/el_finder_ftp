@@ -1,6 +1,7 @@
 require 'fileutils'
 require 'net/ftp'
 
+require 'el_finder_ftp/railties'
 require 'el_finder_ftp/base64'
 require 'el_finder_ftp/ftp_authentication_error'
 require 'el_finder_ftp/ftp_adapter'
