@@ -5,6 +5,7 @@ module ElFinderFtp
     def initialize(server)
       @server = {
         response_cache_expiry_seconds: 30,
+        passive: false,
       }.merge(server)
 
       @cached_responses = {}
@@ -14,6 +15,7 @@ module ElFinderFtp
       unless connected?
         ElFinderFtp::Connector.logger.info "  \e[1;32mFTP:\e[0m  Connecting to #{server[:host]} as #{server[:username]}"
         @connection = Net::FTP.new( server[:host], server[:username], server[:password] )
+        @connection.passive = server[:passive]
       end
 
       @connection
