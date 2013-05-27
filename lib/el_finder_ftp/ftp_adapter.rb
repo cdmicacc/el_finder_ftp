@@ -1,3 +1,5 @@
+require 'net/ftp/list'
+
 module ElFinderFtp
   class FtpAdapter
     attr_reader :connection, :server
@@ -32,15 +34,19 @@ module ElFinderFtp
 
     def children(pathname, with_directory)
       cached :children, pathname do
-        ftp_context(pathname) do
+        ftp_context do
           ElFinderFtp::Connector.logger.debug "  \e[1;32mFTP:\e[0m    Fetching children of #{pathname}"
-          ls.map { |entry|
+          list(pathname).map { |e|
+            next if e =~ /\$RECYCLE.BIN/
+
+            entry = Net::FTP::List.parse(e)
+            
             if with_directory
               pathname.fullpath + ::ElFinderFtp::FtpPathname.new(self, entry)
             else
               ::ElFinderFtp::FtpPathname.new(self, entry)
             end
-          }
+          }.compact
         end
       end
     end

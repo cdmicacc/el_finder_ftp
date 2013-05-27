@@ -2,40 +2,27 @@ module ElFinderFtp
   class FtpPathname < Pathname   
     attr_reader :adapter
     
-    def initialize(adapter, list_line_or_name, attrs = {})
+    def initialize(adapter, list_entry_or_name, attrs = {})
       @adapter = adapter
 
-      if list_line_or_name.is_a? ElFinderFtp::FtpPathname
-        super(list_line_or_name.to_s)
-        self.attrs = list_line_or_name.attrs
-      else
-        match = list_line_or_name.match /^(\d\d)-(\d\d)-(\d\d) *(\d\d):(\d\d)(..) *([<0-9][^ ]*) *([^ ].*)$/
-        if match
-          month, day, year, hour, min, ampm, type, filename = match.captures
-          month, day, year, hour, min = [month, day, year, hour, min].map { |v| v.to_i }
-
-          hour += 12 if ampm.downcase == 'pm'
-          if year < 50
-            year += 2000
-          else
-            year += 1900
-          end
-
-          super(filename)
-          @time = Time.new(year, month, day, hour, min)
-
-          case type
-          when '<DIR>'
-            @size = 0
-            @type = :directory
-          else
-            @type = :file
-            @size = type
-          end
+      if list_entry_or_name.is_a? ElFinderFtp::FtpPathname
+        super(list_entry_or_name.to_s)
+        self.attrs = list_entry_or_name.attrs
+      elsif list_entry_or_name.is_a? Net::FTP::List::Entry
+        super(list_entry_or_name.basename)
+        
+        if list_entry_or_name.dir?
+          @size = 0
+          @type = :directory
         else
-          super(list_line_or_name)
-          self.attrs = attrs
+          @type = :file
+          @size = list_entry_or_name.filesize
         end
+        
+        @time = list_entry_or_name.mtime
+      else
+        super(list_entry_or_name)
+        self.attrs = attrs
       end
     end
 
