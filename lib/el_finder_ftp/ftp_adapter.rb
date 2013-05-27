@@ -77,7 +77,7 @@ module ElFinderFtp
           rescue Net::FTPPermError => ex
             # Can't "size" directories, but the error returned is different than if the file 
             # doesn't exist at all
-            if ex.message.match /The system cannot find the file specified/
+            if ex.message.match /(?:The system cannot find the file specified|Could not get file size)/
               false
             else
               true
@@ -108,6 +108,8 @@ module ElFinderFtp
           begin
             size(pathname.to_s)
           rescue Net::FTPPermError => e
+            nil
+          rescue Net::FTPReplyError => e
             nil
           end
         end
@@ -221,7 +223,7 @@ module ElFinderFtp
       
         self.connection.instance_eval &block
       rescue Net::FTPPermError => ex
-        if ex.message =~ /User cannot log in/
+        if ex.message =~ /(?:User cannot log in|Login incorrect)/
           ElFinderFtp::Connector.logger.info "  \e[1;32mFTP:\e[0m    Authentication required: #{ex}"
           raise FtpAuthenticationError.new(ex.message)
         else
@@ -229,7 +231,7 @@ module ElFinderFtp
           raise
         end
       rescue Net::FTPReplyError => ex
-        if ex.message =~ /Password required/
+        if ex.message =~ /(?:Password required|Login incorrect)/
           ElFinderFtp::Connector.logger.info "  \e[1;32mFTP:\e[0m    Authentication required: #{ex}"
           raise FtpAuthenticationError.new(ex.message)
         else
