@@ -37,8 +37,6 @@ module ElFinderFtp
         ftp_context do
           ElFinderFtp::Connector.logger.debug "  \e[1;32mFTP:\e[0m    Fetching children of #{pathname}"
           list(pathname).map { |e|
-            next if e =~ /\$RECYCLE.BIN/
-
             entry = Net::FTP::List.parse(e)
             
             if with_directory
