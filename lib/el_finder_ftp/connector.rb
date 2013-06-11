@@ -25,6 +25,7 @@ module ElFinderFtp
       :disabled_commands => ['archive', 'duplicate', 'extract', 'resize', 'tmb'],
       :allow_dot_files => true,
       :upload_max_size => '50M',
+      :name_validator => lambda { |name| name.strip != '.' && name =~ /^[^\x00-\x1f\\?*:"><|\/]+$/ },
       :upload_file_mode => 0644,
       :archivers => {},
       :extractors => {},
@@ -218,6 +219,10 @@ module ElFinderFtp
         @response[:error] = 'Access Denied'
         return
       end
+      unless valid_name?(@params[:name])
+        @response[:error] = 'Unable to create folder'
+        return
+      end
 
       dir = @target + @params[:name]
       if !dir.exist? && dir.mkdir
@@ -233,6 +238,10 @@ module ElFinderFtp
         @response[:error] = 'Access Denied'
         return
       end
+      unless valid_name?(@params[:name])
+        @response[:error] = 'Unable to create file'
+        return
+      end
 
       file = @target + @params[:name]
       if !file.exist? && file.touch
@@ -244,6 +253,11 @@ module ElFinderFtp
 
     #
     def _rename
+      unless valid_name?(@params[:name])
+        @response[:error] = "Unable to rename #{@target.ftype}"
+        return
+      end
+
       to = @target.dirname + @params[:name]
 
       perms_for_target = perms_for(@target)
@@ -279,7 +293,13 @@ module ElFinderFtp
       end
       added_list = []
       @params[:upload].to_a.each do |io|
-        dst = @target + @options[:original_filename_method].call(io)
+        name = @options[:original_filename_method].call(io)
+        unless valid_name?(name)
+          @response[:error] = 'Unable to create file'
+          return
+        end
+        dst = @target + name
+
         dst.write(io)
         
         added_list.push cdc_for(dst)
@@ -578,6 +598,11 @@ module ElFinderFtp
         matches.none?{|e| e.last[perm] == false}
       end
     end # of specific_perm_for
+
+    #
+    def valid_name?(name)
+      @options[:name_validator].call(name)
+    end
     
     #
     def invalid_request

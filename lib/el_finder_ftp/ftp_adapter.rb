@@ -24,8 +24,10 @@ module ElFinderFtp
     end
 
     def close
-      ElFinderFtp::Connector.logger.info "  \e[1;32mFTP:\e[0m  Closing connection to #{server[:host]}"
-      @connection.close if connected?
+      if connected?
+        ElFinderFtp::Connector.logger.info "  \e[1;32mFTP:\e[0m  Closing connection to #{server[:host]}"
+        @connection.close 
+      end      
     end
 
     def connected?
@@ -36,8 +38,12 @@ module ElFinderFtp
       cached :children, pathname do
         ftp_context do
           ElFinderFtp::Connector.logger.debug "  \e[1;32mFTP:\e[0m    Fetching children of #{pathname}"
-          list(pathname).map { |e|
+          list("-la", pathname).map { |e|
             entry = Net::FTP::List.parse(e)
+
+            # Skip . and .. entries
+            next if entry.basename =~ /^\.+$/
+            # ElFinderFtp::Connector.logger.debug "  \e[1;32mFTP:\e[0m      Seeing #{e}"
             
             if with_directory
               pathname.fullpath + ::ElFinderFtp::FtpPathname.new(self, entry)
