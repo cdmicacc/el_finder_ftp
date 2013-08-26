@@ -11,6 +11,7 @@ Gem::Specification.new do |s|
   s.homepage    = "https://github.com/Nivio/el_finder_ftp"
   s.summary     = %q{elFinder server side connector for Ruby, with an FTP backend.}
   s.description = %q{Ruby library to provide server side functionality for elFinder.  elFinder is an open-source file manager for web, written in JavaScript using jQuery UI.}
+  s.license       = "MIT"
 
   s.rubyforge_project = "el_finder_ftp"
 
